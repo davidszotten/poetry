@@ -26,7 +26,7 @@ def test_publish_publishes_to_pypi_by_default(fixture_dir, mocker, config):
     assert [("foo", "bar")] == uploader_auth.call_args
     assert [
         ("https://upload.pypi.org/legacy/",),
-        {"cert": None, "client_cert": None, "dry_run": False},
+        {"cert": None, "client_cert": None, "dry_run": False, "skip_existing": False},
     ] == uploader_upload.call_args
 
 
@@ -57,7 +57,7 @@ def test_publish_can_publish_to_given_repository(
     assert [("foo", "bar")] == uploader_auth.call_args
     assert [
         ("http://foo.bar",),
-        {"cert": None, "client_cert": None, "dry_run": False},
+        {"cert": None, "client_cert": None, "dry_run": False, "skip_existing": False},
     ] == uploader_upload.call_args
     assert "Publishing my-package (1.2.3) to foo" in io.fetch_output()
 
@@ -87,7 +87,7 @@ def test_publish_uses_token_if_it_exists(fixture_dir, mocker, config):
     assert [("__token__", "my-token")] == uploader_auth.call_args
     assert [
         ("https://upload.pypi.org/legacy/",),
-        {"cert": None, "client_cert": None, "dry_run": False},
+        {"cert": None, "client_cert": None, "dry_run": False, "skip_existing": False},
     ] == uploader_upload.call_args
 
 
@@ -111,7 +111,12 @@ def test_publish_uses_cert(fixture_dir, mocker, config):
     assert [("foo", "bar")] == uploader_auth.call_args
     assert [
         ("https://foo.bar",),
-        {"cert": Path(cert), "client_cert": None, "dry_run": False},
+        {
+            "cert": Path(cert),
+            "client_cert": None,
+            "dry_run": False,
+            "skip_existing": False,
+        },
     ] == uploader_upload.call_args
 
 
@@ -132,7 +137,12 @@ def test_publish_uses_client_cert(fixture_dir, mocker, config):
 
     assert [
         ("https://foo.bar",),
-        {"cert": None, "client_cert": Path(client_cert), "dry_run": False},
+        {
+            "cert": None,
+            "client_cert": Path(client_cert),
+            "dry_run": False,
+            "skip_existing": False,
+        },
     ] == uploader_upload.call_args
 
 
@@ -150,5 +160,5 @@ def test_publish_read_from_environment_variable(fixture_dir, environ, mocker, co
     assert [("bar", "baz")] == uploader_auth.call_args
     assert [
         ("https://foo.bar",),
-        {"cert": None, "client_cert": None, "dry_run": False},
+        {"cert": None, "client_cert": None, "dry_run": False, "skip_existing": False},
     ] == uploader_upload.call_args

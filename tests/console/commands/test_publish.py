@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 import requests
 
 from poetry.publishing.uploader import UploadError
@@ -50,7 +51,7 @@ def test_publish_with_cert(app_tester, mocker):
     app_tester.execute("publish --cert path/to/ca.pem")
 
     assert [
-        (None, None, None, Path("path/to/ca.pem"), None, False)
+        (None, None, None, Path("path/to/ca.pem"), None, False, False)
     ] == publisher_publish.call_args
 
 
@@ -59,16 +60,24 @@ def test_publish_with_client_cert(app_tester, mocker):
 
     app_tester.execute("publish --client-cert path/to/client.pem")
     assert [
-        (None, None, None, None, Path("path/to/client.pem"), False)
+        (None, None, None, None, Path("path/to/client.pem"), False, False)
     ] == publisher_publish.call_args
 
 
-def test_publish_dry_run(app_tester, http):
+@pytest.mark.parametrize(
+    "options",
+    [
+        "--dry-run",
+        "--skip-existing",
+        "--dry-run --skip-existing",
+    ],
+)
+def test_publish_dry_run_skip_existing(app_tester, http, options):
     http.register_uri(
-        http.POST, "https://upload.pypi.org/legacy/", status=403, body="Forbidden"
+        http.POST, "https://upload.pypi.org/legacy/", status=409, body="Conflict"
     )
 
-    exit_code = app_tester.execute("publish --dry-run --username foo --password bar")
+    exit_code = app_tester.execute(f"publish {options} --username foo --password bar")
 
     assert 0 == exit_code
 

@@ -60,3 +60,11 @@ def test_uploader_registers_for_appropriate_400_errors(mocker, http, uploader):
         uploader.upload("https://foo.com")
 
     assert 1 == register.call_count
+
+
+def test_uploader_skips_existing(http):
+    http.register_uri(http.POST, "https://foo.com", status=409, body="Conflict")
+    uploader = Uploader(Factory().create_poetry(project("simple_project")), NullIO())
+
+    # should not raise
+    uploader.upload("https://foo.com", skip_existing=True)

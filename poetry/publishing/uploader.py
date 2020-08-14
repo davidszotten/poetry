@@ -52,6 +52,32 @@ class UploadError(Exception):
         super().__init__(message)
 
 
+def _ignore_existing(
+    response, skip_existing
+):  # type: (requests.Response, bool) -> bool
+    # based on https://github.com/pypa/twine/blob/62cec5b77037345b4fe1a85bbc6b104440799496/twine/commands/upload.py#L32
+    if not skip_existing:
+        return False
+
+    status = response.status_code
+    reason = getattr(response, "reason", "").lower()
+    text = getattr(response, "text", "").lower()
+
+    # NOTE(sigmavirus24): PyPI presently returns a 400 status code with the
+    # error message in the reason attribute. Other implementations return a
+    # 403 or 409 status code.
+    return (
+        # pypiserver (https://pypi.org/project/pypiserver)
+        status == 409
+        # PyPI / TestPyPI
+        or (status == 400 and "already exist" in reason)
+        # Nexus Repository OSS (https://www.sonatype.com/nexus-repository-oss)
+        or (status == 400 and "updating asset" in reason)
+        # Artifactory (https://jfrog.com/artifactory/)
+        or (status == 403 and "overwrite artifact" in text)
+    )
+
+
 class Uploader:
     def __init__(self, poetry: "Poetry", io: "NullIO") -> None:
         self._poetry = poetry
@@ -113,6 +139,7 @@ class Uploader:
         cert: Optional[Path] = None,
         client_cert: Optional[Path] = None,
         dry_run: bool = False,
+        skip_existing: Optional[bool] = False,
     ) -> None:
         session = self.make_session()
 
@@ -123,7 +150,7 @@ class Uploader:
             session.cert = str(client_cert)
 
         try:
-            self._upload(session, url, dry_run)
+            self._upload(session, url, dry_run, skip_existing)
         finally:
             session.close()
 
@@ -206,10 +233,14 @@ class Uploader:
         return data
 
     def _upload(
-        self, session: requests.Session, url: str, dry_run: Optional[bool] = False
+        self,
+        session: requests.Session,
+        url: str,
+        dry_run: Optional[bool] = False,
+        skip_existing: Optional[bool] = False,
     ) -> None:
         try:
-            self._do_upload(session, url, dry_run)
+            self._do_upload(session, url, dry_run, skip_existing)
         except HTTPError as e:
             if (
                 e.response.status_code == 400
@@ -223,14 +254,18 @@ class Uploader:
             raise UploadError(e)
 
     def _do_upload(
-        self, session: requests.Session, url: str, dry_run: Optional[bool] = False
+        self,
+        session: requests.Session,
+        url: str,
+        dry_run: Optional[bool] = False,
+        skip_existing: Optional[bool] = False,
     ) -> None:
         for file in self.files:
             # TODO: Check existence
 
-            resp = self._upload_file(session, url, file, dry_run)
+            resp = self._upload_file(session, url, file, dry_run, skip_existing)
 
-            if not dry_run:
+            if not dry_run and not _ignore_existing(resp, skip_existing):
                 resp.raise_for_status()
 
     def _upload_file(
@@ -239,6 +274,7 @@ class Uploader:
         url: str,
         file: Path,
         dry_run: Optional[bool] = False,
+        skip_existing: Optional[bool] = False,
     ) -> requests.Response:
         from cleo.ui.progress_bar import ProgressBar
 
@@ -296,7 +332,17 @@ class Uploader:
                         f" - Uploading <c1>{file.name}</c1> <error>FAILED</>"
                     )
                 raise UploadError(e)
+            else:
+                if (
+                    not dry_run
+                    and _ignore_existing(resp, skip_existing)
+                    and self._io.output.is_decorated()
+                ):
+                    self._io.overwrite(
+                        f" - Uploading <c1>{file.name}</c1> <warning>File exists. Skipping</>"
+                    )
             finally:
+                bar.finish()
                 self._io.write_line("")
 
         return resp
